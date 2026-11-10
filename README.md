@@ -55,6 +55,14 @@ don't share the link. Click **Sign out and close** at the end and the container 
 
 To build the image yourself instead: `docker build -t icloud-to-immich .`
 
+#### As an always-available service
+
+To keep it on your home server and use it whenever you like, use
+[`docker-compose.example.yml`](docker-compose.example.yml). It gives you a fixed,
+bookmarkable link (set `ICLOUD2IMMICH_TOKEN`), restarts automatically, and signs out of
+iCloud after 20 idle minutes so your Apple session isn't left open between uses. Keep it
+on your home network: don't expose it to the internet.
+
 ### Windows
 
 Download **iCloudToImmich.exe** from the [latest release](https://github.com/xkenricx/icloud-to-immich/releases/latest)

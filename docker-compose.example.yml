@@ -1,0 +1,25 @@
+# Run iCloud to Immich as an always-available service on your home server.
+#
+# 1. Make a key:   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+#    and put it in a .env file next to this one:   ICLOUD2IMMICH_TOKEN=<that key>
+# 2. docker compose up -d
+# 3. Bookmark  http://<server-ip>:8120/#t=<that key>
+#
+# Between uses it signs you out of iCloud after 20 idle minutes and restarts
+# clean (never during a copy). Progress lives in the volume, so stopped runs resume.
+services:
+  icloud-to-immich:
+    image: ghcr.io/xkenricx/icloud-to-immich:latest
+    container_name: icloud-to-immich
+    restart: unless-stopped
+    environment:
+      ICLOUD2IMMICH_TOKEN: ${ICLOUD2IMMICH_TOKEN:?set ICLOUD2IMMICH_TOKEN in .env}
+    # Idle sign-out on: the image default keeps it off for one-off `docker run`s.
+    command: ["python", "main.py", "--host", "0.0.0.0", "--port", "8080", "--no-browser"]
+    ports:
+      - "8120:8080"     # put your server's LAN IP in front (e.g. "192.168.1.10:8120:8080") to keep it off other networks
+    volumes:
+      - data:/data
+
+volumes:
+  data:

@@ -134,7 +134,20 @@ class App:
 
 
 APP = App()
-TOKEN = secrets.token_urlsafe(24)
+def _load_token() -> str:
+    """Per-launch random key, or a fixed one from ICLOUD2IMMICH_TOKEN so a
+    long-running server keeps the same bookmarkable link across restarts."""
+    fixed = os.environ.get("ICLOUD2IMMICH_TOKEN", "").strip()
+    if fixed:
+        if len(fixed) < 24:
+            sys.exit("ICLOUD2IMMICH_TOKEN must be at least 24 characters "
+                     "(try: python -c \"import secrets; print(secrets.token_urlsafe(32))\").")
+        return fixed
+    return secrets.token_urlsafe(24)
+
+
+TOKEN = _load_token()
+TOKEN_FIXED = bool(os.environ.get("ICLOUD2IMMICH_TOKEN", "").strip())
 # True when serving on a network interface (Docker). The token is then the only
 # gate, so the Host-header loopback check is skipped.
 NETWORK_MODE = False
@@ -274,7 +287,10 @@ def serve(open_browser: bool = True, port: int = 0, host: str = "127.0.0.1",
     if NETWORK_MODE:
         print("Open this address in your browser, replacing SERVER with this machine's IP or name"
               " (and the port, if you mapped a different one):", flush=True)
-        print(f"  http://SERVER:{httpd.server_port}/#t={TOKEN}", flush=True)
+        if TOKEN_FIXED:  # don't echo a long-lived key into logs
+            print(f"  http://SERVER:{httpd.server_port}/#t=<your ICLOUD2IMMICH_TOKEN>", flush=True)
+        else:
+            print(f"  http://SERVER:{httpd.server_port}/#t={TOKEN}", flush=True)
         print("Anyone with this link can use the app, so don't share it.", flush=True)
     else:
         url = f"http://127.0.0.1:{httpd.server_port}/#t={TOKEN}"
