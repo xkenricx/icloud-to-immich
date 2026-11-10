@@ -75,6 +75,8 @@ class Item:
     favorite: bool = False
     hidden: bool = False
     albums: list[str] = field(default_factory=list)
+    # Source-specific extras (Google Takeout: description, GPS, "no info file").
+    info: dict = field(default_factory=dict)
 
     @property
     def total_size(self) -> int:

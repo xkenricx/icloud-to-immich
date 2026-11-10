@@ -255,6 +255,8 @@ class Engine:
     # ---------- delete ----------
     def deletable(self, scope: Scope) -> list[Item]:
         """Items in scope whose every file is recorded as verified in Immich."""
+        if not getattr(self.icloud, "can_delete", True):
+            return []      # Google Photos: apps can't delete; the wizard guides the user instead
         out = []
         for item in self.items:
             if not scope.matches(item) or self.state.status(item.id) != "verified":
