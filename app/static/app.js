@@ -416,7 +416,26 @@
     }
   }
 
+  // Opening the link from the logs on a page that's already showing the key screen
+  // only changes the part after "#", which doesn't reload the page. Pick it up anyway.
+  window.addEventListener("hashchange", () => {
+    const t = new URLSearchParams(location.hash.slice(1)).get("t");
+    if (t && t !== TOKEN) { TOKEN = t; stopped = false; poll(); }
+  });
+
   if (!TOKEN) showGate("");
   else poll();
-  setInterval(() => { if (!document.hidden && TOKEN && $("gate").hidden) poll(); }, 1000);
+  // Every second while the page is visible. While it's in a background tab, keep
+  // checking in every 15 s (browsers may stretch that to once a minute): that's what
+  // tells the app someone still has it open, so the 20-minute idle sign-out only
+  // happens once the page is really closed.
+  let lastPoll = 0;
+  setInterval(() => {
+    if (!TOKEN || !$("gate").hidden) return;
+    const every = document.hidden ? 15000 : 1000;
+    if (Date.now() - lastPoll >= every - 50) { lastPoll = Date.now(); poll(); }
+  }, 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && TOKEN && $("gate").hidden) { lastPoll = Date.now(); poll(); }
+  });
 })();
