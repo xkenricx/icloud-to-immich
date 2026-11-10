@@ -8,8 +8,16 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
+
+UNREACHABLE = ("Can't reach Immich at {url}. Check that you typed the same address you use to "
+               "open Immich in your browser, including the number after the colon (the port), "
+               "and that the server is turned on.")
+SSL_PROBLEM = ("Immich at {url} uses a security certificate this app doesn't trust. Try the same "
+               "address starting with http:// instead of https://, or the address you use on your "
+               "home network.")
 
 
 class ImmichError(Exception):
@@ -22,13 +30,16 @@ def sha1_b64(sha1_hex: str) -> str:
 
 class Immich:
     def __init__(self, url: str, api_key: str, timeout: float = 600) -> None:
-        url = url.strip().rstrip("/")
-        if not url.startswith(("http://", "https://")):
+        url = url.strip()
+        if "://" not in url:
             url = "http://" + url
-        if url.endswith("/api"):
-            url = url[:-4]
-        self.url = url
-        self.api = url + "/api"
+        # People paste whatever is in their address bar (".../photos", ".../albums/123",
+        # ".../api"). Immich is always served at the root, so keep scheme + host + port.
+        parts = urlsplit(url)
+        if not parts.hostname:
+            raise ImmichError("That doesn't look like a web address. It should look like 192.168.1.10:2283.")
+        self.url = f"{parts.scheme}://{parts.netloc}"
+        self.api = self.url + "/api"
         self.timeout = timeout
         self.s = requests.Session()
         self.s.headers.update({"x-api-key": api_key.strip(), "Accept": "application/json"})
@@ -37,14 +48,18 @@ class Immich:
         kw.setdefault("timeout", self.timeout)
         try:
             r = self.s.request(method, self.api + path, **kw)
+        except requests.exceptions.SSLError as e:
+            raise ImmichError(SSL_PROBLEM.format(url=self.url)) from e
         except requests.ConnectionError as e:
-            raise ImmichError(f"Can't reach Immich at {self.url}. Check the address and that the server is on.") from e
+            raise ImmichError(UNREACHABLE.format(url=self.url)) from e
         except requests.Timeout as e:
             raise ImmichError("Immich took too long to answer.") from e
         if r.status_code == 401:
-            raise ImmichError("Immich rejected the API key.")
+            raise ImmichError("Immich didn't accept that API key. Copy it again from Immich (Account "
+                              "Settings → API Keys). If you can't see it any more, create a new one.")
         if r.status_code == 403:
-            raise ImmichError("The API key is missing a permission. Create one with all permissions.")
+            raise ImmichError("That API key is missing permissions. In Immich, create a new API key "
+                              "and leave every permission switched on.")
         if r.status_code >= 400:
             raise ImmichError(f"Immich error {r.status_code} on {path}: {r.text[:200]}")
         return r.json() if r.content else None
@@ -53,10 +68,14 @@ class Immich:
     def connect(self) -> dict:
         try:
             ping = self.s.get(self.api + "/server/ping", timeout=15)
+        except requests.exceptions.SSLError as e:
+            raise ImmichError(SSL_PROBLEM.format(url=self.url)) from e
         except requests.RequestException as e:
-            raise ImmichError(f"Can't reach Immich at {self.url}. Check the address and that the server is on.") from e
+            raise ImmichError(UNREACHABLE.format(url=self.url)) from e
         if ping.status_code != 200 or "pong" not in ping.text:
-            raise ImmichError(f"{self.url} doesn't look like an Immich server.")
+            raise ImmichError(f"Something answered at {self.url}, but it isn't Immich. Check the "
+                              "number after the colon: it should be the port Immich uses "
+                              "(2283 is the usual one; on TrueNAS it's often 30041).")
         version = self._req("GET", "/server/version")
         me = self._req("GET", "/users/me")
         return {"version": f"{version['major']}.{version['minor']}.{version['patch']}",

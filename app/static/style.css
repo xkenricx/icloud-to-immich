@@ -96,3 +96,29 @@ button.link { border: 0; background: none; color: var(--accent); padding: 4px 6p
 .log pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
   font-size: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .foot { font-size: 12px; color: var(--muted); text-align: center; margin: 8px 0 32px; }
+
+/* ---------- v0.1.2: friendlier first run ---------- */
+.step h2.plain::before { display: none; }
+code { font: 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--bar);
+  padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.hint { font-weight: 400; font-size: 13px; color: var(--muted); }
+.where { background: var(--bg); border-radius: 8px; padding: 4px 14px; margin: 12px 0; font-size: 14px; }
+.where ul { padding-left: 18px; margin: 6px 0 10px; }
+.where li { margin: 6px 0; }
+.help ol { font-size: 14px; color: var(--muted); padding-left: 20px; margin: 8px 0; }
+.help ol li { margin: 4px 0; }
+.note { font-size: 14px; background: var(--bg); border-left: 3px solid var(--accent);
+  padding: 8px 12px; border-radius: 4px; margin: 10px 0; }
+
+.choices { gap: 8px; }
+.choice { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; font-weight: 400; }
+.choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.choice input[type=radio] { margin-top: 4px; flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
+.choice span { display: grid; gap: 2px; }
+.choice b { font-size: 15px; }
+.choice small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+select {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; margin: 0 2px;
+}

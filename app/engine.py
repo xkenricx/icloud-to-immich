@@ -132,6 +132,9 @@ class Engine:
             "pending": len(by("pending")),
             "first": chosen[0].taken.date().isoformat() if chosen else None,
             "last": chosen[-1].taken.date().isoformat() if chosen else None,
+            # whole-library span, so the page can offer only years that have photos
+            "library_first": self.items[0].taken.date().isoformat() if self.items else None,
+            "library_last": self.items[-1].taken.date().isoformat() if self.items else None,
         }
 
     # ---------- transfer ----------

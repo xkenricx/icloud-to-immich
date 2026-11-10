@@ -1,126 +1,186 @@
 # iCloud to Immich
 
-Move your photos and videos from iCloud Photos into your own [Immich](https://immich.app)
-server. Then, only if you want, free up the space in iCloud and on your iPhone.
+Move your photos and videos from **iCloud** into your own **[Immich](https://immich.app)**
+photo server. Every file is checked to be an exact copy. Afterwards, only if you want
+to, the app can free up the space in iCloud and on your iPhone.
 
-It's a tool you **run once, when you need it**: start it, follow the six steps in your
-browser, close it. Nothing runs in the background afterwards.
+You don't need to be technical. You follow six steps on a web page, and each one tells
+you what to do.
 
-> **Not affiliated with Apple or Immich.** iCloud access uses an *unofficial* web API
-> that Apple can change or block at any time. The optional delete step removes photos
-> from iCloud and all your Apple devices. The app goes to great lengths to delete only
-> what it has verified in Immich, but this is free software with no warranty (see
+> **Not affiliated with Apple or Immich.** The app reaches iCloud through an
+> *unofficial* connection that Apple could change at any time. The optional last step
+> deletes photos from iCloud and all your Apple devices. The app only deletes what it
+> has confirmed is safely in Immich, but this is free software with no warranty (see
 > [LICENSE](LICENSE)). Keep a backup you trust.
 
-## What it does
+---
 
-1. **Connects to your Immich** with an API key.
-2. **Signs in to iCloud** with your Apple ID, password and 2FA code. The password goes
-   straight to Apple from your machine and is never saved.
-3. **Lets you choose what to move**: everything, items older than N days, or a date range.
-4. **Copies and checks every file.** Each one is downloaded from iCloud, uploaded to
-   Immich, then checked byte-for-byte (SHA-1) against what Immich stored.
-   - **Live Photos** keep their motion: the photo and its short video are linked in Immich.
-   - **Edited photos** arrive as a stack, with your edit on top and the untouched original
-     underneath.
-   - **Albums** are recreated with the same names. Apple's automatic albums (Videos,
-     Screenshots…) are skipped because Immich has its own.
-   - **Hidden** items go to Immich's Archive. **Favorites** stay favorites.
-   - You can stop at any time. Running it again picks up where it left off and never
-     uploads duplicates.
-5. **Frees up space (optional).** It deletes the copied items from iCloud, which removes
-   them from your iPhone, iPad and Mac too. An item can only be deleted if *every* file
-   it has (photo, Live Photo video, edited version) is confirmed identical in Immich and
-   not in Immich's trash. Each item is checked again just before it's deleted, and you
-   type `DELETE` to confirm.
-6. **Signs you out** and removes the temporary sign-in data.
+## Which version should I use?
 
-> **Getting the space back:** deleted items go to **Recently Deleted** for 30 days, the
-> same as when you delete in the Photos app. To free the space now, on your iPhone open
-> Photos → Recently Deleted → Select → Delete All.
+| If… | Use |
+|---|---|
+| Your Immich runs on a home server, NAS or Raspberry Pi (Docker, TrueNAS, Synology, Unraid, Portainer…) and you'd like the app to live there too | **[On your server](#on-your-server)** (recommended) |
+| You just want to run it once from your computer | **[Windows](#windows)** or **[Mac](#mac)** |
 
-## Three ways to run it
+All versions do exactly the same thing. Your photos go straight from Apple to your own
+Immich and never pass through anyone else's computer.
 
-### Docker (best if you already run Immich)
+---
 
-On the machine that runs Immich (works on x86 and ARM, e.g. a Raspberry Pi):
+## What you'll need
 
-```sh
-docker run --rm -p 8080:8080 -v icloud2immich:/data ghcr.io/xkenricx/icloud-to-immich:latest
-```
+1. **Your Immich address**: what you type in your browser to open Immich, for example
+   `192.168.1.10:2283`.
+2. **An Immich API key**: a password-like code that lets the app add photos to your
+   Immich. To make one:
+   1. Open Immich in your browser and sign in.
+   2. Click your **profile picture** (top right) → **Account Settings** → **API Keys**.
+   3. Click **New API Key**, type any name, leave all permissions on, and click **Create**.
+   4. Copy the key it shows. Immich only shows it once.
+3. **Your Apple ID and password**, and your iPhone nearby for the 6-digit code Apple
+   sends.
 
-The log prints an address like `http://SERVER:8080/#t=…`. Open it in your browser, with
-`SERVER` replaced by that machine's IP or name. The part after `#t=` is a one-time key, so
-don't share the link. Click **Sign out and close** at the end and the container exits.
+> **If you use Advanced Data Protection** on your Apple account, turn on
+> **Access iCloud Data on the Web** first (iPhone: Settings → your name → iCloud).
+> Otherwise the app can't see your photos.
 
-To build the image yourself instead: `docker build -t icloud-to-immich .`
+### About the "access key" (the `#t=…` part of the link)
 
-#### As an always-available service
+The app's own link ends in `#t=` followed by a long code. That code is the app's
+**access key**. It keeps other people on your network from using the app.
 
-To keep it on your home server and use it whenever you like, use
-[`docker-compose.example.yml`](docker-compose.example.yml). It gives you a fixed,
-bookmarkable link (set `ICLOUD2IMMICH_TOKEN`), restarts automatically, and signs out of
-iCloud after 20 idle minutes so your Apple session isn't left open between uses. Keep it
-on your home network: don't expose it to the internet.
+| | **Access key** | **Immich API key** |
+|---|---|---|
+| What it does | Lets *you* open the app | Lets the app put photos into *your Immich* |
+| Where it comes from | The app makes it for you | You create it in Immich (see above) |
+| Where it goes | At the end of the app's link | In step 1 of the app |
 
-### Windows
+If you ever open the app without its access key, it asks for it and tells you where to
+find it. After that your browser remembers it.
 
-Download **iCloudToImmich.exe** from the [latest release](https://github.com/xkenricx/icloud-to-immich/releases/latest)
-and double-click it. A small window opens to show the app is running, and
-your browser opens the wizard. Keep the window open until you're done.
+---
 
-Windows may warn that the app is from an unknown publisher (it isn't code-signed yet).
-Click **More info → Run anyway**.
+## On your server
 
-### Mac
+This runs the app on the same machine as your Immich, so it's always there when you
+need it.
 
-Download **iCloudToImmich-mac.zip** from the [latest release](https://github.com/xkenricx/icloud-to-immich/releases/latest)
-(Apple Silicon Macs), unzip it, and open **iCloud to Immich.app**. Your browser opens the wizard.
+1. **Add the app.** Copy the contents of [`docker-compose.example.yml`](docker-compose.example.yml)
+   and paste it into your server's screen for adding an app from "compose" or "YAML":
+   - **TrueNAS SCALE:** Apps → Discover Apps → **⋮** (three dots) → **Install via YAML**
+   - **Portainer:** Stacks → **Add stack** → paste into the web editor → **Deploy the stack**
+   - **Synology:** Container Manager → **Project** → **Create** → paste it in
+   - **Anything with a terminal:** save it as `docker-compose.yml` and run `docker compose up -d`
+2. **Find your link.** Open the app's **logs**:
+   - TrueNAS: Apps → click **icloud-to-immich** → the logs icon
+   - Portainer: Containers → **icloud-to-immich** → **Logs**
+   - Synology: Container Manager → Container → **icloud-to-immich** → **Log**
+   - Terminal: `docker logs icloud-to-immich`
 
-macOS will say it's from an unidentified developer (it isn't notarized yet). Right-click
-the app → **Open** → **Open**. You only need to do this the first time.
+   Look for the box made of `=====` lines. Inside it is a link like
+   `http://YOUR-SERVER-ADDRESS:PORT/#t=…`.
+3. **Open it.** Replace `YOUR-SERVER-ADDRESS:PORT` with your server's address and
+   `8120`, for example `http://192.168.1.10:8120/#t=…`, and keep everything after `#t=`
+   as it is. **Bookmark it.** The link stays the same, even after restarts.
 
-## Before you start
+When you're done, click **Sign out**. The app stays on your server for next time, and
+it also signs you out of iCloud by itself after 20 minutes without use. You can close
+the page while it's copying: the copy keeps going on the server.
 
-- **An Immich API key:** in Immich, profile picture → Account Settings → API Keys →
-  New API Key, with all permissions.
-- **Advanced Data Protection:** if it's on, enable *Access iCloud Data on the Web*
-  (iPhone: Settings → your name → iCloud) or the app can't see your photos.
-- **Space on your Immich server:** the wizard shows how much the selection needs.
-- **Not supported yet:** hardware security keys for Apple ID, Shared Library and shared
-  albums, and the old two-step verification.
+To update to a newer version later, use your server's "pull / update" button for the
+app. In a terminal: `docker compose pull && docker compose up -d`.
+
+---
+
+## Windows
+
+1. Download **iCloudToImmich.exe** from the
+   [latest release](https://github.com/xkenricx/icloud-to-immich/releases/latest).
+2. Double-click it. Windows may say *"Windows protected your PC"*, because the app isn't
+   signed by a paid certificate yet. Click **More info** → **Run anyway**.
+3. A small black window opens (leave it open) and your web browser opens the app.
+   That's it.
+
+If you close the browser tab by accident, double-click the app again and it reopens the
+same page. When you're finished, click **Sign out and close** on the page. Keep your
+computer awake while it copies.
+
+---
+
+## Mac
+
+1. Download **iCloudToImmich-mac.zip** from the
+   [latest release](https://github.com/xkenricx/icloud-to-immich/releases/latest).
+   (For Macs with Apple Silicon: M1 or newer.)
+2. Double-click the zip to unpack it, then drag **iCloud to Immich** into your
+   **Applications** folder.
+3. Open it. The first time, macOS says it *"can't be opened"* because it isn't from the
+   App Store or a paid developer account. To allow it:
+   - Open **System Settings** → **Privacy & Security**, scroll down, and click
+     **Open Anyway** next to "iCloud to Immich". Confirm with your password.
+   - (On older macOS versions you can instead right-click the app → **Open** → **Open**.)
+4. Your web browser opens the app. If you close the tab, open the app again.
+
+When you're finished, click **Sign out and close** on the page. Keep your Mac awake
+while it copies.
+
+---
+
+## Using the app
+
+1. **Connect your Immich**: paste your Immich address and API key.
+2. **Sign in to iCloud**: your Apple ID, password, then the 6-digit code.
+3. **Choose what to move.** The first time, it suggests **"Try it first: just the last
+   30 days"**. Do that, then look at the result in Immich before moving everything.
+   You can also choose **Everything**, **Only older photos** (keep recent ones on your
+   phone), or **A specific period**.
+4. **Copy to Immich.** Nothing is deleted in this step. You can pause and continue later.
+   It never makes duplicates.
+   - **Live Photos** keep their motion.
+   - **Edited photos** arrive with your edit on top and the untouched original underneath.
+   - **Albums** are recreated with the same names.
+   - **Favorites** stay favorites, and **hidden** photos go to Immich's Archive.
+5. **Free up space (optional).** Deletes the copied photos from iCloud and your Apple
+   devices. You see exactly how many first and type `DELETE` to confirm. Anything not
+   confirmed as an exact copy in Immich is never deleted.
+6. **Finish**: sign out.
+
+> **Getting the space back:** deleted photos wait in **Recently Deleted** for 30 days,
+> just like when you delete them in the Photos app. To free the space right away, on
+> your iPhone open Photos → **Recently Deleted** → **Select** → **Delete All**.
+
+### Not supported yet
+
+Apple ID hardware security keys, iCloud Shared Library and shared albums, and Apple's
+old "two-step verification".
+
+---
+
+## Common problems
+
+| You see | What to do |
+|---|---|
+| **"This page needs its access key"** | Open the link from the app's logs (server) or reopen the app (Windows/Mac). See [About the access key](#about-the-access-key-the-t-part-of-the-link). |
+| **"Can't reach Immich"** | Use exactly the address you use to open Immich in your browser, including the number after the colon. |
+| **"…not 'localhost'"** | On a server, use your Immich server's network address (like `192.168.1.10:2283`) instead of `localhost`. |
+| **"Immich didn't accept that API key"** | Create a new API key in Immich and paste it again. Immich only shows a key once. |
+| **"Apple ID or password is wrong"** | Check them at [appleid.apple.com](https://appleid.apple.com). |
+| **"iCloud Photos can't be reached from the web"** | Turn on *Access iCloud Data on the Web* (see [What you'll need](#what-youll-need)). |
+| **Some items "didn't copy"** | Click the button to try them again. They stay safely in iCloud until they copy. |
+
+Still stuck? [Open an issue](https://github.com/xkenricx/icloud-to-immich/issues) and
+describe what you see. For security problems, see [SECURITY.md](SECURITY.md).
 
 ## Privacy
 
-Everything runs on your own machine or server. It talks only to Apple (iCloud) and your
-Immich server. Nothing is sent to the developer or anywhere else. The only thing saved
-is a small progress file (item ids, file names, sizes and checksums, no photos and no
-passwords), kept so a stopped run can resume:
+Everything runs on your own computer or server. The app only talks to Apple (iCloud)
+and to your Immich. Nothing is sent to the developer or anyone else. It only saves a
+small progress file (photo IDs, file names, sizes and checksums: no photos and no
+passwords) so a paused copy can carry on.
 
-- Windows: `%LOCALAPPDATA%\iCloudToImmich\runs`
-- Mac: `~/Library/Application Support/iCloudToImmich/runs`
-- Docker: the `/data` volume
+## For developers
 
-## How it works (for developers)
-
-- `app/icloud.py`: iCloud Photos through [pyicloud](https://github.com/timlaing/pyicloud),
-  an **unofficial** client for Apple's web API. Apple can change that API at any time.
-- `app/immich.py`: the Immich REST endpoints used (tested on Immich v3.3.6).
-- `app/engine.py`: scope → copy + verify → albums → delete, and the deletion safety rule.
-- `app/state.py`: SQLite progress per (Apple ID, Immich server).
-- `app/server.py` + `app/static/`: the local wizard. It binds to 127.0.0.1 unless run in
-  Docker, and every API call needs the per-launch key.
-- `tests/`: engine tests with fake iCloud/Immich, focused on "never delete unless verified".
-  Run with `python -m unittest discover -s tests`.
-- `spike/`: the original feasibility scripts and [findings](spike/FINDINGS.md).
-- Builds: `build/build_windows.ps1`, `build/build_mac.sh`, `Dockerfile`. CI
-  (`.github/workflows/build.yml`) builds and smoke-tests all three on every push. Pushing
-  a `v*` tag publishes the Docker image and attaches the Windows/Mac downloads to a release.
-
-## Problems and questions
-
-Open an [issue](https://github.com/xkenricx/icloud-to-immich/issues). For security
-problems, see [SECURITY.md](SECURITY.md).
+See [BUILDING.md](BUILDING.md).
 
 ## License
 
