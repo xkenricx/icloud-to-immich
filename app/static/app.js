@@ -35,6 +35,7 @@
   let deletePreview = null;  // {count, bytes}
   let scopeTimer = null, scopePending = true, scopeReady = false;
   let autoScanned = false, stopped = false, failCount = 0, prefilled = false;
+  let lastIcloudStatus = null, scanErr = "", scanAskedAt = 0;
 
   // ---------- helpers ----------
   async function api(path, body, token = TOKEN) {
@@ -207,6 +208,10 @@
     scopeChanged();
   }));
   $("rescan").onclick = () => act($("rescan"), $("scope-err"), () => api("/api/scan", {}));
+  $("scan-start").onclick = () => act($("scan-start"), $("scan-err"), async () => {
+    scanErr = ""; autoScanned = true; scanAskedAt = Date.now();
+    await api("/api/scan", {});
+  });
 
   // ---------- 4: copy ----------
   $("copy-start").onclick = () => act($("copy-start"), $("copy-err"), () => api("/api/transfer", {}));
@@ -332,18 +337,29 @@
       $("icloud-desc").textContent = `Signed in as ${S.icloud.apple_id}. ${num(S.icloud.library)} photos and videos in iCloud.`;
     }
 
-    // 3 Library: read it automatically the first time we get here
+    // 3 Library: read it automatically after every new iCloud sign-in. (Once per
+    // page load wasn't enough: signing in again on an already-open page after a
+    // server restart never started a scan, and the page sat on "Reading…".)
+    if (S.icloud.status === "signed_in" && lastIcloudStatus !== "signed_in") autoScanned = false;
+    lastIcloudStatus = S.icloud.status;
     const scanning = running && job === "scanning";
     if (ready && !scanned && !running && !autoScanned) {
       autoScanned = true;
-      api("/api/scan", {}).then(poll).catch((x) => ($("scope-err").textContent = x.message));
+      scanErr = ""; scanAskedAt = Date.now();
+      api("/api/scan", {}).then(poll).catch((x) => { scanErr = x.message; render(); });
     }
-    show($("scan-run"), scanning || (!scanned && icloudDone));
+    // "Reading…" only while a scan is really running; otherwise say what's wrong
+    // and offer a button, so the page can never look busy while nothing happens.
+    const scanFailed = !running && job === "scanning" && p.phase === "error";
+    show($("scan-run"), scanning);
+    const stalled = autoScanned && Date.now() - scanAskedAt > 5000;   // asked, but nothing started
+    show($("scan-idle"), ready && !scanned && !scanning && (scanFailed || !!scanErr || stalled));
+    $("scan-err").textContent = scanFailed ? `Reading your library stopped: ${p.message}`
+      : scanErr ? `Couldn't start reading your library: ${scanErr}` : "";
     if (scanning) {
       $("scan-count").textContent = p.total ? `${num(p.done)} of ${num(p.total)}` : "";
       $("scan-bar").style.width = `${pct(p.done, p.total)}%`;
     }
-    if (!running && job === "scanning" && p.phase === "error") $("scope-err").textContent = p.message;
     show($("scope"), scanned && !!sum);
     if (sum && !scopeReady) {        // first summary: set up the menus, then send the choice
       scopeReady = true;

@@ -119,6 +119,12 @@
         <div class="bar"><i id="scan-bar"></i></div>
         <p class="fine">This takes about a minute per 2,000 photos.</p>
       </div>
+      <!-- Shown when the library hasn't been read and nothing is reading it: a scan
+           that failed, or one that never started. Never a "Reading…" that isn't. -->
+      <div id="scan-idle" hidden>
+        <p class="err" id="scan-err"></p>
+        <div class="row"><button class="primary" id="scan-start" type="button">Read my iCloud library</button></div>
+      </div>
       <div id="scope" hidden>
         <fieldset class="choices" id="choices">
           <label class="choice"><input type="radio" name="mode" value="recent">
