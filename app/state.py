@@ -25,7 +25,48 @@ CREATE TABLE IF NOT EXISTS parts (
   verified INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (item_id, role)
 );
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
+
+
+def mask_email(s: str) -> str:
+    """'kenric@example.com' -> 'k•••@example.com' (enough to recognise, not to read off)."""
+    name, at, domain = s.partition("@")
+    return f"{name[:1]}•••{at}{domain}" if at else (s[:1] + "•••" if s else "")
+
+
+def past_runs() -> list[dict]:
+    """Progress from earlier runs, so the page can say "welcome back" before sign-in.
+
+    Works for runs made by older versions too (they just have no account hint).
+    """
+    out = []
+    runs = data_dir() / "runs"
+    if not runs.is_dir():
+        return out
+    for f in sorted(runs.glob("*.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            db = sqlite3.connect(f"file:{f}?mode=ro", uri=True)
+            counts = dict(db.execute("SELECT status, count(*) FROM items GROUP BY status").fetchall())
+            try:
+                meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
+            except sqlite3.OperationalError:
+                meta = {}
+            db.close()
+        except sqlite3.Error:
+            continue
+        copied = counts.get("verified", 0) + counts.get("deleted", 0)
+        if not copied:
+            continue
+        out.append({
+            "account": meta.get("account", ""),
+            "immich": meta.get("immich", ""),
+            "copied": copied,
+            "remaining": counts.get("pending", 0) + counts.get("failed", 0),
+            "freed": counts.get("deleted", 0),
+            "when": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).isoformat(),
+        })
+    return out
 
 
 def data_dir() -> Path:
@@ -57,6 +98,10 @@ class State:
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # Only a masked hint of the account, for the "welcome back" message.
+        self.db.executemany("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                            [("account", mask_email(apple_id)), ("immich", immich_url)])
+        self.db.commit()
 
     def _x(self, sql: str, args=()):
         with self._lock:

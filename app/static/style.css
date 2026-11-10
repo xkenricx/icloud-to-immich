@@ -122,3 +122,5 @@ select {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--card);
   border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; margin: 0 2px;
 }
+.welcome { background: color-mix(in srgb, var(--ok) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--line));
+  border-radius: 12px; padding: 14px 18px; margin: 16px 0; font-size: 15px; }

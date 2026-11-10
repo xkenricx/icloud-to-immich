@@ -248,6 +248,19 @@
       if (first && !first.closest("[hidden]")) setTimeout(() => first.focus(), 300);
     }
 
+    // Welcome back: earlier progress, until iCloud is signed in again
+    const past = (S.past || [])[0];
+    show($("welcome"), !!past && !icloudDone);
+    if (past) {
+      const when = new Date(past.when).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      const who = past.account ? ` for ${escapeHtml(past.account)}` : "";
+      $("welcome").innerHTML = `<b>Welcome back.</b> Your progress is saved${who} (last activity ${escapeHtml(when)}): ` +
+        `<b>${num(past.copied)}</b> photos and videos are already safely in Immich` +
+        (past.remaining ? ` and <b>${num(past.remaining)}</b> haven't been copied yet.` : ", and nothing is left to copy.") +
+        (past.freed ? ` ${num(past.freed)} have been freed from iCloud.` : "") +
+        ` Sign in below to carry on. Nothing will be copied twice.`;
+    }
+
     // 1 Immich
     show($("f-immich"), !immichDone);
     show($("immich-ok"), immichDone);

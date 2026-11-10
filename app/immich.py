@@ -6,6 +6,7 @@ Tested against Immich v3.3.6.
 from __future__ import annotations
 
 import base64
+import secrets
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -26,6 +27,68 @@ class ImmichError(Exception):
 
 def sha1_b64(sha1_hex: str) -> str:
     return base64.b64encode(bytes.fromhex(sha1_hex)).decode()
+
+
+class StreamingMultipart:
+    """A multipart/form-data body (text fields + one file) that reads the file from
+    disk in chunks as it's sent, so memory use stays small whatever the file size.
+
+    Byte-for-byte the same layout `requests` produces for data=... files=...,
+    which Immich already accepts.
+    """
+
+    def __init__(self, fields: dict[str, str], file_field: str, filename: str, path: Path,
+                 boundary: str | None = None) -> None:
+        self.boundary = boundary or secrets.token_hex(16)
+        b = self.boundary.encode()
+        head = b""
+        for k, v in fields.items():
+            head += (b"--" + b + b"\r\n"
+                     + f'Content-Disposition: form-data; name="{k}"\r\n\r\n'.encode()
+                     + str(v).encode() + b"\r\n")
+        safe = filename.replace('"', "%22").replace("\r", "").replace("\n", "")
+        head += (b"--" + b + b"\r\n"
+                 + f'Content-Disposition: form-data; name="{file_field}"; filename="{safe}"\r\n\r\n'.encode())
+        self._parts = [head, None, b"\r\n--" + b + b"--\r\n"]   # None = the file
+        self._path = path
+        self._size = path.stat().st_size
+        self._fh = None
+        self._i = 0
+        self._buf = b""
+        self.content_type = f"multipart/form-data; boundary={self.boundary}"
+
+    def __len__(self) -> int:
+        return len(self._parts[0]) + self._size + len(self._parts[2])
+
+    def __enter__(self):
+        self._fh = self._path.open("rb")
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self._fh:
+            self._fh.close()
+
+    def read(self, n: int = -1) -> bytes:
+        """File-like read(); requests/http.client call this with a block size."""
+        if n is None or n < 0:
+            n = 1 << 20
+        out = b""
+        while len(out) < n and self._i < 3:
+            if self._i == 1:
+                chunk = self._fh.read(n - len(out))
+                if chunk:
+                    out += chunk
+                    continue
+                self._i += 1
+                continue
+            if not self._buf:
+                self._buf = self._parts[self._i]
+            take = self._buf[: n - len(out)]
+            out += take
+            self._buf = self._buf[len(take):]
+            if not self._buf:
+                self._i += 1
+        return out
 
 
 class Immich:
@@ -92,8 +155,14 @@ class Immich:
             data["visibility"] = visibility
         if live_video_id:
             data["livePhotoVideoId"] = live_video_id
-        with path.open("rb") as fh:
-            res = self._req("POST", "/assets", data=data, files={"assetData": (filename, fh)})
+        # Stream the multipart body from disk. `requests`' own files= encoder builds
+        # the whole body in memory, which got the app OOM-killed on a 1.75 GB video
+        # inside a 512 MB container.
+        body = StreamingMultipart(data, "assetData", filename, path)
+        with body:
+            res = self._req("POST", "/assets", data=body,
+                            headers={"Content-Type": body.content_type,
+                                     "Content-Length": str(len(body))})
         return res["id"], res.get("status", "created")
 
     def asset(self, asset_id: str) -> dict:

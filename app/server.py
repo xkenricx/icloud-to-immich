@@ -24,7 +24,7 @@ from . import __version__
 from .engine import Engine, Scope
 from .icloud import ICloud, ICloudError
 from .immich import Immich, ImmichError
-from .state import State, data_dir
+from .state import State, data_dir, past_runs
 
 IDLE_EXIT_SECONDS = 20 * 60
 
@@ -123,6 +123,8 @@ class App:
         out = {
             "version": __version__,
             "mode": self.mode,
+            # earlier progress, shown as "welcome back" until iCloud is signed in
+            "past": past_runs() if self.icloud_status != "signed_in" else [],
             "immich": {"connected": bool(self.immich_info), **(self.immich_info or {}),
                        "url": self.immich.url if self.immich else None},
             "icloud": {"status": self.icloud_status,
