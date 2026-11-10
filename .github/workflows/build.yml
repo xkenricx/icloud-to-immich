@@ -79,6 +79,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: "false"   # no .dockerbuild artifact (see release job)
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -114,8 +116,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Fetch only our two downloads by name. Downloading "everything" also pulls the
+      # Docker build-record artifact, which fails to download and broke v0.1.0's release.
       - uses: actions/download-artifact@v4
-        with: { path: out }
+        with: { name: windows, path: out/windows }
+      - uses: actions/download-artifact@v4
+        with: { name: mac, path: out/mac }
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
