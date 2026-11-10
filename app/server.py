@@ -207,8 +207,8 @@ class App:
         if eng:
             p = eng.progress
             elapsed = max(time.time() - p.started, 0.001) if p.started else 0
-            out["progress"] = {**vars(p), "log": p.log[-60:], "elapsed": elapsed,
-                               "rate": p.bytes_done / elapsed if elapsed else 0}
+            out["progress"] = {**{k: v for k, v in vars(p).items() if k != "samples"},
+                               "log": p.log[-60:], "elapsed": elapsed, "rate": p.recent_rate()}
             if p.job == "scanning" and p.phase == "done" and not self.scanned and eng.items:
                 self.scanned = True
             out["scanned"] = self.scanned

@@ -55,6 +55,11 @@ class ICloudSessionExpired(ICloudError):
 
 _AUTH_ERRORS = (PyiCloudAuthRequiredException, PyiCloud2FARequiredException)
 DOWNLOAD_TRIES = 3
+# Apple's signed download links stop working after about an hour. Re-read the
+# whole library (one pass: ~1 minute per 2,000 items) a little before that,
+# instead of fixing links one at a time: pyicloud's single-photo lookup misses
+# and falls back to paging through the entire library, i.e. a full pass *per item*.
+LINK_MAX_AGE = 40 * 60
 
 
 @dataclass
@@ -107,6 +112,8 @@ class ICloud:
         self.api: PyiCloudService | None = None
         self.apple_id: str | None = None
         self._assets: dict[str, PhotoAsset] = {}
+        self._links_at = 0.0                     # when the download links were last fetched
+        self.on_status: Callable[[str], None] | None = None   # engine shows this as "current"
 
     # ---------- sign-in ----------
     def sign_in(self, apple_id: str, password: str) -> str:
@@ -202,6 +209,7 @@ class ICloud:
             for asset in album:
                 if asset.id in items and name not in items[asset.id].albums:
                     items[asset.id].albums.append(name)
+        self._links_at = time.time()
         return sorted(items.values(), key=lambda i: i.taken)
 
     # ---------- download / delete ----------
@@ -214,58 +222,81 @@ class ICloud:
         res = _edited_resource(asset)
         return res.url if res else None
 
-    def _refresh(self, item_id: str) -> None:
-        """Look the item up again: gives fresh download links and change tag."""
+    def _refresh_all(self) -> None:
+        """Fresh download links (and change tags) for every item, in one library pass."""
         assert self.api is not None
+        if self.on_status:
+            self.on_status("Getting fresh download links from iCloud (about a minute)…")
+        fresh: dict[str, PhotoAsset] = {}
         try:
-            fresh = self.api.photos.all.get(item_id)
+            for asset in self.api.photos.all:
+                fresh[asset.id] = asset
+            albums = self.api.photos.albums
+            if "Hidden" in albums:
+                for asset in albums["Hidden"]:
+                    fresh.setdefault(asset.id, asset)
         except _AUTH_ERRORS as e:
             raise ICloudSessionExpired() from e
         except PyiCloudAPIResponseException as e:
             if getattr(e, "code", None) in (401, 421):
                 raise ICloudSessionExpired() from e
-            raise ICloudError("iCloud didn't answer when asked about this item. It stays in "
-                              "iCloud; try it again later.") from e
-        if fresh is None:
+            raise ICloudError("iCloud didn't answer when asked for fresh download links. Nothing "
+                              "was lost: click Continue to try again.") from e
+        for item_id in list(self._assets):
+            if item_id in fresh:
+                self._assets[item_id] = fresh[item_id]
+        self._links_at = time.time()
+
+    def _ensure_fresh(self, item_id: str) -> None:
+        if time.time() - self._links_at > LINK_MAX_AGE:
+            self._refresh_all()
+        if item_id not in self._assets:
             raise ICloudError("This item is no longer in iCloud (it may have been deleted).")
-        self._assets[item_id] = fresh
 
     def download(self, item_id: str, role: str, dest: Path) -> tuple[int, str]:
         """Stream one part to dest; returns (bytes, sha1 hex).
 
-        Apple's download links are signed and expire (about an hour in practice),
-        and pyicloud raises its own errors for them before we see the response,
-        e.g. PyiCloudEndpointGoneException on a 410. So: on any failure, look the
-        item up again for a fresh link and retry, a few times, with a short pause.
+        Links are refreshed in bulk before they expire. If one still fails (pyicloud
+        raises its own errors before we see the response, e.g. on a 410), refresh
+        all links once and retry; plain network errors get a short pause.
         """
         assert self.api is not None
+        self._ensure_fresh(item_id)
         for attempt in range(1, DOWNLOAD_TRIES + 1):
-            if attempt > 1:
-                time.sleep(2 * (attempt - 1))
-                self._refresh(item_id)          # may raise ICloudSessionExpired
             url = self._url(item_id, role)
             if not url:
                 raise ICloudError(f"iCloud has no download link for the {role.replace('_', ' ')}.")
             try:
                 resp = self.api.session.get(url, stream=True, timeout=120)
-                if resp.status_code != 200:
-                    resp.close()
-                    continue
-                h, n = hashlib.sha1(), 0
-                with resp, dest.open("wb") as fh:
-                    for chunk in resp.iter_content(CHUNK):
-                        fh.write(chunk)
-                        h.update(chunk)
-                        n += len(chunk)
-                return n, h.hexdigest()
+                if resp.status_code == 200:
+                    h, n = hashlib.sha1(), 0
+                    with resp, dest.open("wb") as fh:
+                        for chunk in resp.iter_content(CHUNK):
+                            fh.write(chunk)
+                            h.update(chunk)
+                            n += len(chunk)
+                    return n, h.hexdigest()
+                resp.close()
+                link_problem = True
             except _AUTH_ERRORS as e:
                 raise ICloudSessionExpired() from e
-            except (PyiCloudAPIResponseException, requests.RequestException):
-                continue                        # expired link or network blip: retry
+            except PyiCloudAPIResponseException:
+                link_problem = True                 # expired/withdrawn link (e.g. 410)
+            except requests.RequestException:
+                link_problem = False                # network blip
+            if attempt == DOWNLOAD_TRIES:
+                break
+            if link_problem and time.time() - self._links_at > 120:
+                self._refresh_all()                 # one pass fixes every link, not just this one
+            else:
+                time.sleep(2 * attempt)
+            if item_id not in self._assets:
+                raise ICloudError("This item is no longer in iCloud (it may have been deleted).")
         raise ICloudError(f"iCloud wouldn't give a working download after {DOWNLOAD_TRIES} tries. "
                           "It stays in iCloud; try it again later.")
 
     def delete(self, item_id: str) -> None:
+        self._ensure_fresh(item_id)                 # also refreshes the record's change tag
         for attempt in (1, 2):
             try:
                 self._assets[item_id].delete()
@@ -275,7 +306,7 @@ class ICloud:
             except PyiCloudAPIResponseException:
                 if attempt == 2:
                     raise ICloudError("iCloud refused to delete this item. It's still there.")
-                self._refresh(item_id)  # stale change tag; reload and retry once
+                self._refresh_all()                 # stale change tag; reload and retry once
 
     def close(self) -> None:
         """Forget the session: delete cookies and drop references."""

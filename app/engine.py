@@ -55,6 +55,21 @@ class Progress:
     started: float = 0.0
     counts: dict = field(default_factory=dict)
     log: list = field(default_factory=list)
+    samples: list = field(default_factory=list)   # (time, bytes_done), for the recent speed
+
+    def sample(self) -> None:
+        now = time.time()
+        self.samples.append((now, self.bytes_done))
+        while self.samples and now - self.samples[0][0] > 600:   # keep the last 10 minutes
+            self.samples.pop(0)
+
+    def recent_rate(self) -> float:
+        """Bytes/second over the last few minutes; the overall average hides slowdowns."""
+        if len(self.samples) >= 2 and self.samples[-1][0] - self.samples[0][0] >= 60:
+            (t0, b0), (t1, b1) = self.samples[0], self.samples[-1]
+            return (b1 - b0) / (t1 - t0)
+        elapsed = time.time() - self.started if self.started else 0
+        return self.bytes_done / elapsed if elapsed > 0 else 0.0
 
     def note(self, text: str) -> None:
         self.log.append(f"{time.strftime('%H:%M:%S')}  {text}")
@@ -148,6 +163,9 @@ class Engine:
             p.total, p.bytes_total = len(todo), sum(i.total_size for i in todo)
             p.counts = {"verified": 0, "failed": 0}
             p.note(f"Copying {len(todo)} items to Immich.")
+            if hasattr(self.icloud, "on_status"):
+                self.icloud.on_status = lambda msg: setattr(p, "current", msg)
+            p.sample()
             work = Path(tempfile.mkdtemp(prefix="icloud2immich-work-"))
             in_a_row = 0
             try:
@@ -178,6 +196,7 @@ class Engine:
                                 f"Immich is up, then click Continue. Last problem: {msg}")
                     p.done += 1
                     p.bytes_done += item.total_size
+                    p.sample()
             finally:
                 shutil.rmtree(work, ignore_errors=True)
             if not self._stop.is_set():
