@@ -149,6 +149,37 @@ while it copies.
 > just like when you delete them in the Photos app. To free the space right away, on
 > your iPhone open Photos → **Recently Deleted** → **Select** → **Delete All**.
 
+### How long will it take?
+
+Plan on roughly **an hour or two for every 20–25 GB** of photos and videos. The app
+shows how much your selection is in step 3 and an estimate of the time left while it
+copies.
+
+It can seem slow, and that's expected. Here's why:
+
+- **It copies one photo at a time, carefully.** For each one it downloads the file from
+  Apple, uploads it to your Immich, then asks Immich to confirm it's an exact copy before
+  moving on. A Live Photo is two files (the photo and its short video), and an edited
+  photo is two more (your edit and the original). Most of the time goes on waiting for
+  these back-and-forth trips, not on actually moving data.
+- **Apple sets the download speed.** iCloud sends files at whatever pace it chooses, and
+  that varies from day to day. Nothing on your side can make Apple go faster.
+- **Lots of small photos take longer than a few big videos of the same total size**,
+  because every photo has the same trips to make, however small it is.
+- **Your Immich keeps working after each upload.** It makes thumbnails and reads the
+  photo's details, which can slow uploads a little on a small server or a Raspberry Pi.
+
+Things that **don't** make it faster: giving the app more memory (it only needs a little,
+even for huge videos) or a faster computer to run it on.
+
+What helps: start with a small test (**Try it first**), then run **Everything** and let it
+work. On a server you can close the page while it copies, and it carries on. On Windows or
+Mac, keep the computer awake. If it's interrupted for any reason, start it again: nothing
+that's already copied is copied twice.
+
+> Copying several photos at the same time would make it noticeably faster, and it's
+> planned for a future version.
+
 ### Not supported yet
 
 Apple ID hardware security keys, iCloud Shared Library and shared albums, and Apple's
@@ -166,6 +197,7 @@ old "two-step verification".
 | **"Immich didn't accept that API key"** | Create a new API key in Immich and paste it again. Immich only shows a key once. |
 | **"Apple ID or password is wrong"** | Check them at [appleid.apple.com](https://appleid.apple.com). |
 | **"iCloud Photos can't be reached from the web"** | Turn on *Access iCloud Data on the Web* (see [What you'll need](#what-youll-need)). |
+| **It seems slow** | That's normal: it copies and checks one photo at a time, and Apple sets the download speed. See [How long will it take?](#how-long-will-it-take) |
 | **Some items "didn't copy"** | Click the button to try them again. They stay safely in iCloud until they copy. |
 
 Still stuck? [Open an issue](https://github.com/xkenricx/icloud-to-immich/issues) and
