@@ -1,0 +1,125 @@
+name: build
+
+# Every push: run the tests and build all three packages (smoke-tested).
+# A tag like v0.1.0: also publish the Docker image to GHCR and attach the
+# Windows .exe and Mac .zip to a GitHub release.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYI_ARGS: >-
+    --collect-submodules pyicloud --collect-data pyicloud
+    --collect-data fido2 --collect-data certifi
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pyinstaller
+      - name: Build exe
+        run: python -m PyInstaller --noconfirm --onefile --console --name iCloudToImmich --add-data "app\static;app\static" $env:PYI_ARGS.Split(" ") main.py
+      - name: Smoke test (starts and serves the page)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\iCloudToImmich.exe -ArgumentList '--no-browser','--port','8765' -PassThru
+          Start-Sleep 10
+          $code = (Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing).StatusCode
+          Stop-Process $p
+          if ($code -ne 200) { throw "page returned $code" }
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/iCloudToImmich.exe }
+
+  mac:
+    needs: test
+    runs-on: macos-latest   # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pyinstaller
+      - name: Build app
+        run: |
+          python -m PyInstaller --noconfirm --windowed --name "iCloud to Immich" \
+            --osx-bundle-identifier io.github.xkenricx.icloudtoimmich \
+            --add-data "app/static:app/static" $PYI_ARGS main.py
+      - name: Smoke test (starts and serves the page)
+        run: |
+          "dist/iCloud to Immich.app/Contents/MacOS/iCloud to Immich" --no-browser --port 8765 &
+          sleep 10
+          curl -fsS -o /dev/null http://127.0.0.1:8765/
+          kill %1
+      - name: Zip
+        run: cd dist && ditto -c -k --keepParent "iCloud to Immich.app" iCloudToImmich-mac.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: dist/iCloudToImmich-mac.zip }
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Smoke test (amd64)
+        run: |
+          docker build -t i2i-test .
+          docker run -d --name i2i -p 8080:8080 i2i-test
+          sleep 5
+          curl -fsS -o /dev/null http://127.0.0.1:8080/
+          docker logs i2i | grep -q "#t="
+      - uses: docker/login-action@v3
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish (amd64 + arm64, e.g. Raspberry Pi)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/icloud-to-immich:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/icloud-to-immich:latest
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out }
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            --title "iCloud to Immich ${{ github.ref_name }}" --generate-notes \
+            out/windows/iCloudToImmich.exe out/mac/iCloudToImmich-mac.zip

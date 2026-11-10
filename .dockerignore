@@ -1,0 +1,9 @@
+.venv
+spike
+tests
+build
+dist
+*.spec
+__pycache__
+*.pyc
+.git

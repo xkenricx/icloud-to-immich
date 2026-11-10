@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iCloud to Immich</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>iCloud <span class="arrow">→</span> Immich</h1>
+    <p class="lede">Copy your iCloud photos and videos into your own Immich server, check every file arrived intact, then (only if you want) free up the space in iCloud and on your iPhone.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 1. Immich -->
+  <section class="step" id="s-immich" data-n="1">
+    <h2>Connect your Immich server</h2>
+    <div class="body">
+      <form id="f-immich" class="form">
+        <label>Server address
+          <input name="url" placeholder="http://192.168.1.20:2283" autocomplete="url" required>
+        </label>
+        <label>API key
+          <input name="api_key" type="password" placeholder="Paste the key from Immich" autocomplete="off" required>
+        </label>
+        <details class="help"><summary>Where do I get an API key?</summary>
+          <p>In Immich, click your profile picture → <b>Account Settings</b> → <b>API Keys</b> → <b>New API Key</b>. Give it any name, leave all permissions on, and copy the key it shows you.</p>
+        </details>
+        <div class="row"><button class="primary" type="submit">Connect</button><span class="err" data-err></span></div>
+      </form>
+      <div class="ok-line" id="immich-ok" hidden>
+        <span class="tick">✓</span> <span id="immich-desc"></span>
+        <button class="link" id="immich-change" type="button">Change</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. iCloud -->
+  <section class="step" id="s-icloud" data-n="2">
+    <h2>Sign in to iCloud</h2>
+    <div class="body">
+      <form id="f-signin" class="form">
+        <label>Apple ID
+          <input name="apple_id" type="email" autocomplete="username" required>
+        </label>
+        <label>Password
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="fine">Your password goes straight to Apple from this computer. It is never saved, and nothing is sent anywhere except Apple and your own Immich server.</p>
+        <div class="row"><button class="primary" type="submit">Sign in</button><span class="err" data-err></span></div>
+      </form>
+      <form id="f-code" class="form" hidden>
+        <p id="code-hint">Apple sent a 6-digit code to your iPhone or Mac. Tap <b>Allow</b>, then type the code here.</p>
+        <label>Verification code
+          <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
+        </label>
+        <div class="row"><button class="primary" type="submit">Verify</button><span class="err" data-err></span></div>
+      </form>
+      <div class="ok-line" id="icloud-ok" hidden><span class="tick">✓</span> <span id="icloud-desc"></span></div>
+    </div>
+  </section>
+
+  <!-- 3. Library -->
+  <section class="step" id="s-library" data-n="3">
+    <h2>Choose what to move</h2>
+    <div class="body">
+      <div id="scan-run" hidden>
+        <p>Reading your iCloud library… <span id="scan-count"></span></p>
+        <div class="bar"><i id="scan-bar"></i></div>
+      </div>
+      <div id="scope" hidden>
+        <fieldset class="choices" autocomplete="off">
+          <label><input type="radio" name="mode" value="all" autocomplete="off" checked> Everything</label>
+          <label><input type="radio" name="mode" value="older_than" autocomplete="off"> Older than
+            <input type="number" id="days" min="1" value="90" class="num" autocomplete="off"> days</label>
+          <label><input type="radio" name="mode" value="range" autocomplete="off"> Between
+            <input type="text" id="start" placeholder="YYYY-MM-DD" class="date" autocomplete="off"> and
+            <input type="text" id="end" placeholder="YYYY-MM-DD" class="date" autocomplete="off"></label>
+        </fieldset>
+        <div class="stats" id="stats"></div>
+        <p class="fine" id="albums-line"></p>
+        <div class="row"><button class="link" id="rescan" type="button">Scan again</button><span class="err" id="scope-err"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Copy -->
+  <section class="step" id="s-copy" data-n="4">
+    <h2>Copy to Immich</h2>
+    <div class="body">
+      <p class="fine">Nothing is deleted in this step. Each file is downloaded from iCloud, uploaded to Immich, and checked byte-for-byte. Live Photos keep their motion, edited photos keep their original underneath, and your albums are recreated. You can stop at any time and pick up later.</p>
+      <div class="row" id="copy-start-row"><button class="primary" id="copy-start" type="button">Start copying</button><span class="err" id="copy-err"></span></div>
+      <div id="copy-run" hidden>
+        <div class="bar"><i id="copy-bar"></i></div>
+        <p class="meta"><span id="copy-count"></span> · <span id="copy-bytes"></span> · <span id="copy-eta"></span></p>
+        <p class="current" id="copy-current"></p>
+        <button id="copy-stop" type="button">Stop</button>
+      </div>
+      <div id="copy-result" hidden></div>
+      <details class="help" id="fail-box" hidden><summary id="fail-sum"></summary><ul id="fail-list"></ul></details>
+    </div>
+  </section>
+
+  <!-- 5. Free up space -->
+  <section class="step" id="s-delete" data-n="5">
+    <h2>Free up space <span class="opt">optional</span></h2>
+    <div class="body">
+      <p>This deletes the copied items from iCloud, which also removes them from your iPhone, iPad and Mac. Only items that are confirmed identical in Immich can be deleted. Each one is checked again right before it goes.</p>
+      <div class="row"><button id="del-preview" type="button">Check what can be deleted</button><span class="err" id="del-err"></span></div>
+      <div id="del-confirm" hidden>
+        <p class="warn" id="del-summary"></p>
+        <label>Type <b>DELETE</b> to confirm
+          <input id="del-word" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="row"><button class="danger" id="del-go" type="button" disabled>Delete from iCloud</button></div>
+      </div>
+      <div id="del-run" hidden>
+        <div class="bar"><i id="del-bar"></i></div>
+        <p class="meta" id="del-count"></p>
+      </div>
+      <div id="del-done" hidden>
+        <p id="del-result"></p>
+        <div class="callout">
+          <b>One more step to actually get the space back.</b> Deleted items wait in <b>Recently Deleted</b> for 30 days. On your iPhone open <b>Photos</b>, scroll to <b>Recently Deleted</b> (under Utilities), tap <b>Select</b> then <b>Delete All</b>.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Finish -->
+  <section class="step" id="s-finish" data-n="6">
+    <h2>Finish</h2>
+    <div class="body">
+      <p>Signs you out of iCloud on this computer, deletes the temporary sign-in data, and closes the app. Progress is kept, so if you run the app again with the same Apple ID and Immich server it carries on where it left off.</p>
+      <div class="row"><button id="quit" type="button">Sign out and close</button></div>
+      <p id="bye" hidden><b>All done.</b> You can close this tab.</p>
+    </div>
+  </section>
+
+  <details class="help log"><summary>Activity log</summary><pre id="log"></pre></details>
+  <p class="foot" id="foot"></p>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
