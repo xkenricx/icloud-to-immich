@@ -101,6 +101,34 @@ No app can delete from Google Photos. Instead the app:
 4. Warns about **Partner sharing / shared albums**: deleting in Google can remove
    items from other people's view.
 
+## Checked against a real Takeout (November 2026)
+
+One real export (a single 2026 Takeout zip, ~390 MB, one year folder):
+
+| | Result |
+|---|---|
+| Media files / info files | 159 / 100: every info file matched, none left over |
+| iPhone Live Photos | 59, stored by Google as `.HEIC` + `.MP4` with one info file; all paired |
+| Files without an info file | 0 (one name needed a quirk rule to match) |
+| Through the engine | 100/100 items verified, 159 files, 59 Live Photos linked, nothing offered for deletion |
+
+Sidecars were all the 2024 `.supplemental-metadata.json` style. Fields seen: `title`,
+`description`, `photoTakenTime`, `creationTime`, `geoData`, `geoDataExif`, `people`,
+`googlePhotosOrigin`, `imageViews`, `url`.
+
+Not covered by that export (still only tested against fake exports): albums, edited
+copies, favorites/archived/trash, older sidecar naming, truncated names, split
+multi-zip exports, and Pixel motion photos.
+
+## Same photos in iCloud and Google Photos
+
+Many iPhone users back up to *both*. If Google kept the **original** files, they're
+byte-identical to the iCloud copies and Immich skips them as duplicates
+automatically. If the account used **Storage saver**, Google re-compressed them, so
+they'd arrive as near-duplicate copies (Immich's duplicate finder can clean those
+up). The wizard should say this before a Google import when the person has already
+imported from iCloud.
+
 ## Still to decide
 
 - Whether to set GPS, description and date in Immich from the sidecar when the file
