@@ -18,10 +18,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
-from .icloud import ICloudError, Item
+from .icloud import ICloudError, ICloudSessionExpired, Item
 from .immich import ImmichError
 
 ROLE_ORDER = {"live_video": 0, "original": 1, "edited": 2}
+MAX_FAILURES_IN_A_ROW = 10
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Engine:
         self.progress = Progress()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.session_expired = False   # set when Apple ended the sign-in mid-job
 
     # ---------- background job plumbing ----------
     @property
@@ -147,6 +149,7 @@ class Engine:
             p.counts = {"verified": 0, "failed": 0}
             p.note(f"Copying {len(todo)} items to Immich.")
             work = Path(tempfile.mkdtemp(prefix="icloud2immich-work-"))
+            in_a_row = 0
             try:
                 for item in todo:
                     if self._stop.is_set():
@@ -155,10 +158,24 @@ class Engine:
                     try:
                         self.transfer_item(item, work)
                         p.counts["verified"] += 1
-                    except (ICloudError, ImmichError, OSError) as e:
-                        self.state.set_status(item.id, "failed", str(e))
+                        in_a_row = 0
+                    except ICloudSessionExpired:
+                        # Not this item's fault: stop cleanly so the user can sign in
+                        # again, instead of marking everything left as failed.
+                        self.session_expired = True
+                        raise
+                    except Exception as e:  # one bad item must never stop the whole copy
+                        msg = str(e) if isinstance(e, (ICloudError, ImmichError)) \
+                            else f"Unexpected problem: {e}"
+                        self.state.set_status(item.id, "failed", msg)
                         p.counts["failed"] += 1
-                        p.note(f"{item.filename}: {e}")
+                        p.note(f"{item.filename}: {msg}")
+                        in_a_row += 1
+                        if in_a_row >= MAX_FAILURES_IN_A_ROW:
+                            raise ICloudError(
+                                f"Paused after {in_a_row} items in a row didn't copy. That usually "
+                                "means iCloud, Immich or the network is having trouble. Check that "
+                                f"Immich is up, then click Continue. Last problem: {msg}")
                     p.done += 1
                     p.bytes_done += item.total_size
             finally:
@@ -280,6 +297,9 @@ class Engine:
                         self.icloud.delete(item.id)
                         self.state.mark_deleted(item.id)
                         p.counts["deleted"] += 1
+                    except ICloudSessionExpired:
+                        self.session_expired = True
+                        raise
                     except Exception as e:
                         p.counts["failed"] += 1
                         p.note(f"{item.filename}: delete failed ({e})")

@@ -270,6 +270,11 @@
 
     // 2 iCloud
     show($("f-signin"), S.icloud.status === "signed_out");
+    // Apple ended the sign-in during a copy: say so where they'll sign in again.
+    const signinErr = $("f-signin").querySelector("[data-err]");
+    if (S.icloud.status === "signed_out" && p.phase === "error" && /sign-in has expired/.test(p.message || "")) {
+      if (!signinErr.textContent) signinErr.textContent = p.message;
+    }
     show($("f-code"), S.icloud.status === "needs_2fa");
     show($("icloud-ok"), icloudDone);
     $("code-hint").innerHTML = S.icloud.delivery === "sms"

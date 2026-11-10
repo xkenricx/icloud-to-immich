@@ -120,6 +120,10 @@ class App:
     # ---------- view ----------
     def snapshot(self) -> dict:
         eng = self.engine
+        if eng and eng.session_expired and not eng.busy and self.icloud_status == "signed_in":
+            # Apple ended the sign-in mid-copy: show the sign-in form again. The
+            # engine's message ("sign in again, then Continue") stays in the log.
+            self.icloud_status = "signed_out"
         out = {
             "version": __version__,
             "mode": self.mode,

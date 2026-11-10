@@ -206,3 +206,63 @@ class EngineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InterruptionTest(unittest.TestCase):
+    """A real run once stopped dead at item 979 on one unexpected error."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = State("a@b.c", "http://x", path=Path(self.tmp.name) / "s.sqlite")
+
+    def tearDown(self):
+        self.state.close()
+        self.tmp.cleanup()
+
+    def make(self, n):
+        ic, im = FakeICloud([item(i) for i in range(n)]), FakeImmich()
+        eng = Engine(ic, im, self.state)
+        eng.start_scan(); wait(eng)
+        return eng, ic, im
+
+    def test_unexpected_error_on_one_item_does_not_stop_the_copy(self):
+        eng, ic, im = self.make(5)
+        real = ic.download
+
+        def boom(item_id, role, dest):
+            if item_id == "asset2":
+                raise KeyError("something odd")       # not an ICloudError
+            return real(item_id, role, dest)
+        ic.download = boom
+        eng.start_transfer(Scope()); wait(eng)
+        self.assertEqual(eng.progress.phase, "done")
+        self.assertEqual(self.state.status("asset2"), "failed")
+        self.assertEqual(sum(self.state.status(f"asset{i}") == "verified" for i in range(5)), 4)
+
+    def test_expired_sign_in_stops_cleanly_without_failing_the_rest(self):
+        from app.icloud import ICloudSessionExpired
+        eng, ic, im = self.make(6)
+        real = ic.download
+
+        def expire(item_id, role, dest):
+            if item_id == "asset3":
+                raise ICloudSessionExpired()
+            return real(item_id, role, dest)
+        ic.download = expire
+        eng.start_transfer(Scope()); wait(eng)
+        self.assertEqual(eng.progress.phase, "error")
+        self.assertIn("sign in again", eng.progress.message.lower())
+        self.assertTrue(eng.session_expired)
+        statuses = [self.state.status(f"asset{i}") for i in range(6)]
+        self.assertEqual(statuses[:3], ["verified"] * 3)
+        self.assertNotIn("failed", statuses)          # the rest are just still pending
+
+    def test_many_failures_in_a_row_pause_instead_of_failing_everything(self):
+        from app.engine import MAX_FAILURES_IN_A_ROW
+        eng, ic, im = self.make(MAX_FAILURES_IN_A_ROW + 15)
+        ic.download = lambda *a: (_ for _ in ()).throw(OSError("network down"))
+        eng.start_transfer(Scope()); wait(eng)
+        self.assertEqual(eng.progress.phase, "error")
+        self.assertIn("in a row", eng.progress.message)
+        failed = sum(s == "failed" for s in self.state.statuses().values())
+        self.assertEqual(failed, MAX_FAILURES_IN_A_ROW)   # stopped, didn't burn through all 25
