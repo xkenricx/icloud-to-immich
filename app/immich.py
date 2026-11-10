@@ -92,7 +92,7 @@ class StreamingMultipart:
 
 
 class Immich:
-    def __init__(self, url: str, api_key: str, timeout: float = 600) -> None:
+    def __init__(self, url: str, api_key: str | None, timeout: float = 600) -> None:
         url = url.strip()
         if "://" not in url:
             url = "http://" + url
@@ -105,7 +105,10 @@ class Immich:
         self.api = self.url + "/api"
         self.timeout = timeout
         self.s = requests.Session()
-        self.s.headers.update({"x-api-key": api_key.strip(), "Accept": "application/json"})
+        self.s.headers["Accept"] = "application/json"
+        if api_key:
+            self.s.headers["x-api-key"] = api_key.strip()
+        self.signed_in_with_password = False
 
     def _req(self, method: str, path: str, **kw):
         kw.setdefault("timeout", self.timeout)
@@ -118,6 +121,9 @@ class Immich:
         except requests.Timeout as e:
             raise ImmichError("Immich took too long to answer.") from e
         if r.status_code == 401:
+            if self.signed_in_with_password:
+                raise ImmichError("Your Immich sign-in has ended. Sign in to Immich again in step 1, "
+                                  "then click Continue.")
             raise ImmichError("Immich didn't accept that API key. Copy it again from Immich (Account "
                               "Settings → API Keys). If you can't see it any more, create a new one.")
         if r.status_code == 403:
@@ -126,6 +132,54 @@ class Immich:
         if r.status_code >= 400:
             raise ImmichError(f"Immich error {r.status_code} on {path}: {r.text[:200]}")
         return r.json() if r.content else None
+
+    # ---------- signing in with an Immich account ----------
+    def password_login_allowed(self) -> bool:
+        """Public endpoint: False when the server only allows single sign-on (OAuth)."""
+        try:
+            r = self.s.get(self.api + "/server/features", timeout=15)
+        except requests.exceptions.SSLError as e:
+            raise ImmichError(SSL_PROBLEM.format(url=self.url)) from e
+        except requests.RequestException as e:
+            raise ImmichError(UNREACHABLE.format(url=self.url)) from e
+        if r.status_code != 200:
+            raise ImmichError(f"Something answered at {self.url}, but it isn't Immich. Check the "
+                              "number after the colon: it should be the port Immich uses "
+                              "(2283 is the usual one; on TrueNAS it's often 30041).")
+        return bool(r.json().get("passwordLogin", True))
+
+    def login(self, email: str, password: str) -> None:
+        """Sign in like the Immich app does; the session shows up as a device in the
+        user's Immich account until logout()."""
+        if not self.password_login_allowed():
+            raise ImmichError("This Immich server doesn't allow signing in with a password (it "
+                              "probably uses single sign-on). Click 'Use an API key instead' below.")
+        try:
+            r = self.s.post(self.api + "/auth/login", timeout=30,
+                            json={"email": email.strip(), "password": password})
+        except requests.RequestException as e:
+            raise ImmichError(UNREACHABLE.format(url=self.url)) from e
+        if r.status_code in (400, 401):
+            raise ImmichError("Immich didn't accept that email and password. Use the same ones you "
+                              "sign in to Immich with.")
+        if r.status_code >= 400:
+            raise ImmichError(f"Immich couldn't sign you in (error {r.status_code}).")
+        token = r.json().get("accessToken")
+        if not token:
+            raise ImmichError("Immich signed you in but didn't return a session. Try an API key instead.")
+        self.s.headers["Authorization"] = f"Bearer {token}"
+        self.signed_in_with_password = True
+
+    def logout(self) -> None:
+        """End a password session so it disappears from the user's device list."""
+        if not self.signed_in_with_password:
+            return
+        try:
+            self.s.post(self.api + "/auth/logout", timeout=10)
+        except requests.RequestException:
+            pass
+        self.s.headers.pop("Authorization", None)
+        self.signed_in_with_password = False
 
     # ---------- connection ----------
     def connect(self) -> dict:

@@ -73,7 +73,7 @@ class FriendlyErrorsTest(unittest.TestCase):
     def test_missing_fields_say_what_to_do(self):
         with self.assertRaisesRegex(ValueError, "Immich address"):
             self.app.connect_immich("", "key")
-        with self.assertRaisesRegex(ValueError, "API key"):
+        with self.assertRaisesRegex(ValueError, "email and password"):
             self.app.connect_immich("192.168.1.10:2283", "")
         with self.assertRaisesRegex(ValueError, "Apple ID"):
             self.app.sign_in("", "pw")

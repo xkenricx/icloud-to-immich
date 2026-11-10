@@ -3,7 +3,8 @@ without real accounts. Not shipped in the app.
 
     python tests/demo_server.py [--server] [--port 8765]
 
-Any Immich address/key and Apple ID/password work; the 2FA code is 123456.
+Any Immich address + email/password (or API key) and Apple ID/password work;
+the password "wrong" is rejected, and the 2FA code is 123456.
 --server mimics the Docker mode (shows the access-key screen when the key is missing).
 """
 
@@ -86,16 +87,32 @@ class DemoICloud:
 
 
 class DemoImmich(FakeImmich):
+    """Each demo Immich *account* has its own library, like a real multi-user Immich."""
+    libraries: dict[str, "DemoImmich"] = {}
+
     def __init__(self, url, key):
         super().__init__()
         self._real = Immich(url, key)     # reuse the real address clean-up + its errors
         self.url = self._real.url
-        self._key = key
+        self._key = key or ""
+        self.signed_in_with_password = False
+        self.user = "Demo User (API key)"
+        self.logged_out = False
+
+    def login(self, email, password):
+        if password == "wrong":
+            raise ImmichError("Immich didn't accept that email and password.")
+        self.user = email.split("@")[0].title()
+        self.signed_in_with_password = True
+
+    def logout(self):
+        self.logged_out = True
+        self.signed_in_with_password = False
 
     def connect(self):
         if self._key.strip() == "wrong":
             raise ImmichError("Immich didn't accept that API key.")
-        return {"version": "demo", "user": "Demo User", "email": "demo@example.com"}
+        return {"version": "demo", "user": self.user, "email": f"{self.user.lower()}@example.com"}
 
 
 server.ICloud = DemoICloud

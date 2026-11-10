@@ -11,15 +11,16 @@ services:
     image: ghcr.io/xkenricx/icloud-to-immich:latest
     container_name: icloud-to-immich
     restart: unless-stopped
-    # Signs out of iCloud after 20 idle minutes and restarts clean (never during a copy).
+    # Signs people out after 20 minutes with the page closed (never during a copy).
     command: ["python", "main.py", "--host", "0.0.0.0", "--port", "8080", "--no-browser"]
     ports:
       - "8120:8080"      # open it at http://<your-server-address>:8120
     volumes:
       - data:/data       # keeps your progress and the access key between restarts
-    # Optional: put your server's address here and the log shows the exact link to click.
+    # Optional settings: remove the # at the start of the lines you want.
     # environment:
-    #   ICLOUD2IMMICH_URL: "http://192.168.1.10:8120"
+    #   ICLOUD2IMMICH_IMMICH_URL: "http://192.168.1.10:2283"  # your Immich, filled in for everyone
+    #   ICLOUD2IMMICH_URL: "http://192.168.1.10:8120"         # this app's address: the log shows the exact link
 
 volumes:
   data:

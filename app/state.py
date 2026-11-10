@@ -30,21 +30,25 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 
 def mask_email(s: str) -> str:
-    """'kenric@example.com' -> 'k•••@example.com' (enough to recognise, not to read off)."""
+    """'alice@example.com' -> 'a•••@example.com' (enough to recognise, not to read off)."""
     name, at, domain = s.partition("@")
     return f"{name[:1]}•••{at}{domain}" if at else (s[:1] + "•••" if s else "")
 
 
-def past_runs() -> list[dict]:
+def past_runs(only: set[str] | None = None) -> list[dict]:
     """Progress from earlier runs, so the page can say "welcome back" before sign-in.
 
-    Works for runs made by older versions too (they just have no account hint).
+    `only` limits it to run ids this browser has taken part in, so on a shared
+    server one person never sees another person's progress. None = all runs
+    (desktop mode, where it's one person's own computer).
     """
     out = []
     runs = data_dir() / "runs"
     if not runs.is_dir():
         return out
     for f in sorted(runs.glob("*.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if only is not None and f.stem not in only:
+            continue
         try:
             db = sqlite3.connect(f"file:{f}?mode=ro", uri=True)
             counts = dict(db.execute("SELECT status, count(*) FROM items GROUP BY status").fetchall())
@@ -59,6 +63,7 @@ def past_runs() -> list[dict]:
         if not copied:
             continue
         out.append({
+            "run_id": f.stem,
             "account": meta.get("account", ""),
             "immich": meta.get("immich", ""),
             "copied": copied,

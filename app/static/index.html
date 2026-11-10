@@ -45,26 +45,38 @@
 
   <!-- 1. Immich -->
   <section class="step" id="s-immich" data-n="1">
-    <h2>Connect your Immich server</h2>
+    <h2>Sign in to your Immich</h2>
     <div class="body">
       <form id="f-immich" class="form">
         <label>Immich address
           <input name="url" placeholder="For example 192.168.1.10:2283" autocomplete="url" spellcheck="false" required>
           <span class="hint">Open Immich in another browser tab and copy what's in the address bar. Extra bits like <code>/photos</code> are fine.</span>
         </label>
-        <label>Immich API key
-          <input name="api_key" type="password" placeholder="Paste the key you created in Immich" autocomplete="off" spellcheck="false" required>
-        </label>
-        <details class="help" open><summary>How do I get an API key?</summary>
-          <ol>
-            <li>Open Immich in your browser and sign in.</li>
-            <li>Click your <b>profile picture</b> (top right), then <b>Account Settings</b>.</li>
-            <li>Open <b>API Keys</b> and click <b>New API Key</b>.</li>
-            <li>Type any name (for example "iCloud move"), leave all permissions switched on, and click <b>Create</b>.</li>
-            <li>Immich shows the key <b>only once</b>. Copy it and paste it above.</li>
-          </ol>
-        </details>
-        <div class="row"><button class="primary" type="submit">Connect</button><span class="err" data-err></span></div>
+        <div id="immich-account">
+          <label>Immich email
+            <input name="email" type="email" autocomplete="username" placeholder="The email you sign in to Immich with">
+          </label>
+          <label>Immich password
+            <input name="password" type="password" autocomplete="current-password">
+          </label>
+          <p class="fine">Your photos go into <b>your own</b> Immich library. Your password is only used to sign in and is never saved.</p>
+        </div>
+        <div id="immich-key" hidden>
+          <label>Immich API key
+            <input name="api_key" type="password" placeholder="Paste the key you created in Immich" autocomplete="off" spellcheck="false">
+          </label>
+          <details class="help" open><summary>How do I get an API key?</summary>
+            <ol>
+              <li>Open Immich in your browser and sign in.</li>
+              <li>Click your <b>profile picture</b> (top right), then <b>Account Settings</b>.</li>
+              <li>Open <b>API Keys</b> and click <b>New API Key</b>.</li>
+              <li>Type any name (for example "iCloud move"), leave all permissions switched on, and click <b>Create</b>.</li>
+              <li>Immich shows the key <b>only once</b>. Copy it and paste it above.</li>
+            </ol>
+          </details>
+        </div>
+        <div class="row"><button class="primary" type="submit">Sign in</button><span class="err" data-err></span></div>
+        <button class="link" id="immich-toggle" type="button">Sign in with Google or another service instead of a password? Use an API key</button>
       </form>
       <div class="ok-line" id="immich-ok" hidden>
         <span class="tick">✓</span> <span id="immich-desc"></span>

@@ -30,13 +30,13 @@ Immich and never pass through anyone else's computer.
 ## What you'll need
 
 1. **Your Immich address**: what you type in your browser to open Immich, for example
-   `192.168.1.10:2283`.
-2. **An Immich API key**: a password-like code that lets the app add photos to your
-   Immich. To make one:
-   1. Open Immich in your browser and sign in.
-   2. Click your **profile picture** (top right) → **Account Settings** → **API Keys**.
-   3. Click **New API Key**, type any name, leave all permissions on, and click **Create**.
-   4. Copy the key it shows. Immich only shows it once.
+   `192.168.1.10:2283`. The app remembers it after the first time.
+2. **Your Immich email and password**: the ones you sign in to Immich with. Your photos
+   go into *your own* Immich library.
+   - *If you sign in to Immich with Google or another single-sign-on service* (so you have
+     no Immich password), use an **API key** instead. In Immich: profile picture →
+     **Account Settings** → **API Keys** → **New API Key**, leave all permissions on, and
+     copy the key it shows (only once). In the app, click **Use an API key**.
 3. **Your Apple ID and password**, and your iPhone nearby for the 6-digit code Apple
    sends.
 
@@ -49,11 +49,8 @@ Immich and never pass through anyone else's computer.
 The app's own link ends in `#t=` followed by a long code. That code is the app's
 **access key**. It keeps other people on your network from using the app.
 
-| | **Access key** | **Immich API key** |
-|---|---|---|
-| What it does | Lets *you* open the app | Lets the app put photos into *your Immich* |
-| Where it comes from | The app makes it for you | You create it in Immich (see above) |
-| Where it goes | At the end of the app's link | In step 1 of the app |
+It's **not** your Immich password or your Apple password. The app makes it for you, it
+goes at the end of the app's link, and everyone in your household can use the same link.
 
 If you ever open the app without its access key, it asks for it and tells you where to
 find it. After that your browser remembers it.
@@ -84,8 +81,23 @@ need it.
    as it is. **Bookmark it.** The link stays the same, even after restarts.
 
 When you're done, click **Sign out**. The app stays on your server for next time, and
-it also signs you out of iCloud by itself after 20 minutes without use. You can close
-the page while it's copying: the copy keeps going on the server.
+it also signs you out by itself after 20 minutes with the page closed. You can close the
+page while it's copying: the copy keeps going on the server.
+
+### Sharing it with your household
+
+Everyone can use the same link at the same time. Each person's browser gets its own
+private session: they sign in to **their own** Immich account and **their own** iCloud,
+and their photos go into their own Immich library. Nobody sees anyone else's sign-ins,
+photos or progress, and signing out only signs *you* out.
+
+Tip: to save everyone typing the Immich address, add this to the compose file and it's
+filled in for them:
+
+```yaml
+    environment:
+      ICLOUD2IMMICH_IMMICH_URL: "http://192.168.1.10:2283"   # your Immich address
+```
 
 To update to a newer version later, use your server's "pull / update" button for the
 app. In a terminal: `docker compose pull && docker compose up -d`.
@@ -128,7 +140,7 @@ while it copies.
 
 ## Using the app
 
-1. **Connect your Immich**: paste your Immich address and API key.
+1. **Sign in to your Immich**: your Immich address, email and password.
 2. **Sign in to iCloud**: your Apple ID, password, then the 6-digit code.
 3. **Choose what to move.** The first time, it suggests **"Try it first: just the last
    30 days"**. Do that, then look at the result in Immich before moving everything.
@@ -192,9 +204,11 @@ old "two-step verification".
 | You see | What to do |
 |---|---|
 | **"This page needs its access key"** | Open the link from the app's logs (server) or reopen the app (Windows/Mac). See [About the access key](#about-the-access-key-the-t-part-of-the-link). |
+| **"This iCloud account is already being moved in another browser"** | The same Apple ID is signed in on another device or browser. Carry on there, or click **Sign out** there first. |
+| **"Immich didn't accept that email and password"** | Use the ones you sign in to Immich with. If you use Google or another single-sign-on service for Immich, click **Use an API key** instead. |
 | **"Can't reach Immich"** | Use exactly the address you use to open Immich in your browser, including the number after the colon. |
 | **"…not 'localhost'"** | On a server, use your Immich server's network address (like `192.168.1.10:2283`) instead of `localhost`. |
-| **"Immich didn't accept that API key"** | Create a new API key in Immich and paste it again. Immich only shows a key once. |
+| **"Immich didn't accept that API key"** | Create a new API key in Immich and paste it again. Immich only shows a key once. Or sign in with your Immich email and password instead. |
 | **"Apple ID or password is wrong"** | Check them at [appleid.apple.com](https://appleid.apple.com). |
 | **"iCloud Photos can't be reached from the web"** | Turn on *Access iCloud Data on the Web* (see [What you'll need](#what-youll-need)). |
 | **It seems slow** | That's normal: it copies and checks one photo at a time, and Apple sets the download speed. See [How long will it take?](#how-long-will-it-take) |

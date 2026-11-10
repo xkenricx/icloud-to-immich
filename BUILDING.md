@@ -52,5 +52,9 @@ To build locally:
   per-launch key and reopens an already-running copy. Server mode (Docker) creates a
   key once, keeps it in the data folder, and prints the link in the logs.
   `ICLOUD2IMMICH_TOKEN` overrides the key; `ICLOUD2IMMICH_URL` makes the log show the
-  exact link.
+  exact link; `ICLOUD2IMMICH_IMMICH_URL` pre-fills the Immich address for everyone.
+- Sessions: each browser sends a random `X-Session` id and gets its own `App` (Immich +
+  iCloud sign-in, engine, idle timer). One iCloud account can only be active in one
+  session at a time. Idle sessions are signed out after 20 minutes, never mid-copy.
+  `GET /api/overview` gives household-wide counts (no details) for update scripts.
 - `spike/`: the original feasibility scripts and [findings](spike/FINDINGS.md).

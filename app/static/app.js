@@ -13,18 +13,35 @@
   // ---------- access key: from the link, else remembered from last time ----------
   let TOKEN = new URLSearchParams(location.hash.slice(1)).get("t") || store.get("i2i-key") || "";
 
+  // ---------- this browser's private session on the server ----------
+  // Each browser gets its own session (own Immich + iCloud sign-in), so several
+  // people can use one server at once. crypto.getRandomValues works on plain
+  // http:// home-network addresses (randomUUID doesn't).
+  const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    (b) => b.toString(16).padStart(2, "0")).join("");
+  let SID = store.get("i2i-sid");
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(SID || "")) { SID = newId(); store.set("i2i-sid", SID); }
+  const myRuns = () => { try { return JSON.parse(store.get("i2i-runs") || "[]"); } catch (_) { return []; } };
+  function rememberRun(id) {
+    if (!id) return;
+    const runs = myRuns();
+    if (!runs.includes(id)) { runs.unshift(id); store.set("i2i-runs", JSON.stringify(runs.slice(0, 10))); }
+  }
+  let immichMode = "account";   // "account" (email + password) or "key" (API key)
+
   let S = null;              // latest server snapshot
   let editingImmich = false;
   let lastActive = null;
   let deletePreview = null;  // {count, bytes}
   let scopeTimer = null, scopePending = true, scopeReady = false;
-  let autoScanned = false, stopped = false, failCount = 0;
+  let autoScanned = false, stopped = false, failCount = 0, prefilled = false;
 
   // ---------- helpers ----------
   async function api(path, body, token = TOKEN) {
+    if (path === "/api/state") path += `?runs=${encodeURIComponent(myRuns().join(","))}`;
     const r = await fetch(path, {
       method: body === undefined ? "GET" : "POST",
-      headers: { "X-Token": token, "Content-Type": "application/json" },
+      headers: { "X-Token": token, "X-Session": SID, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
@@ -91,7 +108,23 @@
   });
 
   // ---------- 1 & 2: Immich + iCloud ----------
-  bindForm($("f-immich"), async (v) => { await api("/api/immich", v); editingImmich = false; });
+  bindForm($("f-immich"), async (v) => {
+    const body = immichMode === "key" ? { url: v.url, api_key: v.api_key }
+      : { url: v.url, email: v.email, password: v.password };
+    await api("/api/immich", body);
+    if (immichMode === "account") store.set("i2i-immich-email", v.email.trim());
+    $("f-immich").querySelector("[name=password]").value = "";
+    editingImmich = false;
+  });
+  $("immich-toggle").onclick = () => {
+    immichMode = immichMode === "key" ? "account" : "key";
+    show($("immich-account"), immichMode === "account");
+    show($("immich-key"), immichMode === "key");
+    $("immich-toggle").textContent = immichMode === "key"
+      ? "Sign in with your Immich email and password instead"
+      : "Sign in with Google or another service instead of a password? Use an API key";
+    $("f-immich").querySelector("[data-err]").textContent = "";
+  };
   $("immich-change").onclick = () => { editingImmich = true; render(); };
   bindForm($("f-signin"), async (v) => { await api("/api/icloud/signin", v); $("f-signin").reset(); });
   bindForm($("f-code"), async (v) => { await api("/api/icloud/code", v); $("f-code").reset(); });
@@ -196,8 +229,14 @@
   // ---------- 6: finish ----------
   $("quit").onclick = async () => {
     if (S && S.busy && !confirm("Something is still running. Stop it and sign out?")) return;
-    try { await api("/api/quit", {}); } catch (_) { /* the app is restarting or closing */ }
+    try { await api("/api/quit", {}); } catch (_) { /* desktop: the app is closing */ }
     stopped = true;
+    if (S && S.mode === "server") {
+      const again = document.createElement("button");
+      again.type = "button"; again.textContent = "Start again"; again.className = "primary";
+      again.onclick = () => location.reload();
+      setTimeout(() => $("bye").appendChild(again), 0);
+    }
     document.querySelectorAll("#wizard .step").forEach((s) => s.classList.add("locked"));
     $("s-finish").classList.remove("locked");
     $("quit").hidden = true; $("bye").hidden = false;
@@ -261,11 +300,20 @@
         ` Sign in below to carry on. Nothing will be copied twice.`;
     }
 
-    // 1 Immich
+    // 1 Immich: pre-fill the address (and email) so nobody retypes them
+    if (!prefilled) {
+      prefilled = true;
+      const f = $("f-immich");
+      const url = store.get("i2i-immich-url") || S.default_immich_url || "";
+      if (url && !f.url.value) f.url.value = url;
+      const email = store.get("i2i-immich-email") || "";
+      if (email && !f.email.value) f.email.value = email;
+    }
     show($("f-immich"), !immichDone);
     show($("immich-ok"), immichDone);
     if (S.immich.connected) {
-      $("immich-desc").textContent = `Connected to Immich at ${S.immich.url} as ${S.immich.user}`;
+      store.set("i2i-immich-url", S.immich.url);   // the cleaned-up address Immich accepted
+      $("immich-desc").textContent = `Signed in to Immich at ${S.immich.url} as ${S.immich.user}`;
     }
 
     // 2 iCloud
@@ -384,11 +432,11 @@
 
     // 6 Finish
     $("finish-text").textContent = server
-      ? "Signs you out of iCloud. The app stays on your server, ready for next time at this same address. It also signs you out by itself after 20 minutes without use."
+      ? "Signs you out of Immich and iCloud in this browser. Anyone else using the app isn't affected. It also signs you out by itself after 20 minutes with the page closed (never in the middle of a copy)."
       : "Signs you out of iCloud, deletes the temporary sign-in data and closes the app. Your progress is saved: open the app again any time and it carries on where it left off.";
     if (!$("quit").hidden) $("quit").textContent = server ? "Sign out" : "Sign out and close";
     $("bye").innerHTML = server
-      ? "<b>Signed out.</b> To start again, reload this page in a few seconds."
+      ? "<b>Signed out.</b> "
       : "<b>All done.</b> You can close this tab.";
 
     // log + footer
@@ -401,8 +449,11 @@
   async function poll() {
     if (stopped) return;
     try {
-      S = await api("/api/state");
+      const snap = await api("/api/state");
+      if (stopped) return;            // signed out while this request was on its way
+      S = snap;
       failCount = 0;
+      rememberRun(S.run_id);
       if (!$("gate").hidden || $("wizard").hidden) {
         show($("gate"), false); show($("wizard"), true);
         store.set("i2i-key", TOKEN);              // works: remember it for next time
@@ -415,7 +466,7 @@
       }
       if (++failCount > 3) {
         $("foot").textContent = S && S.mode === "server"
-          ? "Can't reach the app right now. If you just signed out, it's restarting: reload in a few seconds."
+          ? "Can't reach the app right now. It may be updating: reload in a minute."
           : "Lost contact with the app. Is its window still open?";
       }
     }
