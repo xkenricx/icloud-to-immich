@@ -266,3 +266,42 @@ class InterruptionTest(unittest.TestCase):
         self.assertIn("in a row", eng.progress.message)
         failed = sum(s == "failed" for s in self.state.statuses().values())
         self.assertEqual(failed, MAX_FAILURES_IN_A_ROW)   # stopped, didn't burn through all 25
+
+
+class ChangedAfterCopyTest(unittest.TestCase):
+    """Editing a photo in iCloud after it was copied must not leave it stuck as 'done'."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = State("a@b.c", "http://x", path=Path(self.tmp.name) / "s.sqlite")
+
+    def tearDown(self):
+        self.state.close()
+        self.tmp.cleanup()
+
+    def test_new_edit_is_copied_on_continue_and_blocks_delete_until_then(self):
+        plain = item(1)
+        ic, im = FakeICloud([plain]), FakeImmich()
+        eng = Engine(ic, im, self.state)
+        eng.start_scan(); wait(eng)
+        eng.start_transfer(Scope()); wait(eng)
+        self.assertEqual(self.state.status("asset1"), "verified")
+        uploads_before = im.n
+        # two weeks later: the photo was edited in iCloud, then the library is read again
+        ic.items = [item(1, edited=True)]
+        eng.start_scan(); wait(eng)
+        self.assertEqual(self.state.status("asset1"), "pending")
+        self.assertEqual(eng.deletable(Scope()), [])            # not deletable with the edit uncopied
+        eng.start_transfer(Scope()); wait(eng)
+        self.assertEqual(self.state.status("asset1"), "verified")
+        self.assertEqual(im.n, uploads_before + 1)              # only the edit was uploaded
+        self.assertEqual(len(eng.deletable(Scope())), 1)
+
+    def test_unchanged_library_stays_done_after_a_rescan(self):
+        ic, im = FakeICloud([item(1), item(2, live=True)]), FakeImmich()
+        eng = Engine(ic, im, self.state)
+        eng.start_scan(); wait(eng)
+        eng.start_transfer(Scope()); wait(eng)
+        eng.start_scan(); wait(eng)                              # come back later, read again
+        self.assertEqual({self.state.status("asset1"), self.state.status("asset2")}, {"verified"})
+        self.assertEqual(len(eng.deletable(Scope())), 2)

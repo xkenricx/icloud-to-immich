@@ -124,9 +124,23 @@ class State:
                 "ON CONFLICT(id) DO UPDATE SET filename=excluded.filename, taken=excluded.taken, "
                 "total_size=excluded.total_size",
                 (item.id, item.filename, item.taken.isoformat(), item.kind, item.total_size))
+        # A photo can change after it was copied (edited in iCloud, a Live Photo's video
+        # added). Any new or changed file sends the item back to "to copy", so Continue
+        # copies just that file, and it can't be deleted until that file is in Immich too.
+        changed = False
         for p in item.parts:
-            self._x("INSERT OR IGNORE INTO parts(item_id, role, filename, size) VALUES (?,?,?,?)",
-                    (item.id, p.role, p.filename, p.size))
+            row = self._q("SELECT size FROM parts WHERE item_id=? AND role=?", (item.id, p.role))
+            if not row:
+                self._x("INSERT INTO parts(item_id, role, filename, size) VALUES (?,?,?,?)",
+                        (item.id, p.role, p.filename, p.size))
+                changed = True
+            elif p.size is not None and row[0]["size"] != p.size:
+                self._x("UPDATE parts SET filename=?, size=?, sha1=NULL, verified=0 "
+                        "WHERE item_id=? AND role=?", (p.filename, p.size, item.id, p.role))
+                changed = True
+        if changed:
+            self._x("UPDATE items SET status='pending', error=NULL "
+                    "WHERE id=? AND status IN ('verified', 'failed')", (item.id,))
 
     def status(self, item_id: str) -> str:
         rows = self._q("SELECT status FROM items WHERE id=?", (item_id,))
